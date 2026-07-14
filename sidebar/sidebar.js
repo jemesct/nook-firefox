@@ -52,7 +52,8 @@ let lastPublished = null;
 let openTabs = [];
 let dragData = null;
 let renameActive = false;
-let selectedTabs = new Set();        // tab ids selected in Today (shift/cmd-click)
+let selectedTabs = new Set();        // entry ids selected in Today (shift/cmd-click)
+let dismissedRemote = new Set();     // remote-tab url keys hidden this session
 
 /* ================= tiny helpers ================= */
 
@@ -386,6 +387,45 @@ async function openSaved(item) {
 async function clearToday(todayTabs) {
   const ids = todayTabs.filter((t) => !t.active && !t.pinned).map((t) => t.id);
   if (ids.length) await B.tabs.remove(ids);
+}
+
+// One seamless Today list: this window's loose tabs first (in tab order),
+// then tabs open on other synced devices — deduped by URL, no grouping.
+function buildTodayList() {
+  const savedKeys = new Set(Object.values(items).filter((i) => i.type === 'tab').map((i) => urlKey(i.url)));
+  const list = [];
+  const seen = new Set();
+  for (const t of openTabs) {
+    const k = urlKey(t.url);
+    if (savedKeys.has(k)) continue;
+    seen.add(k);
+    list.push({ id: t.id, local: true, tab: t, title: t.title || t.url, url: t.url, fav: t.favIconUrl, active: t.active });
+  }
+  for (const [, d] of Object.entries(devices).sort((a, b) => b[1].ts - a[1].ts)) {
+    for (const t of d.tabs || []) {
+      const k = urlKey(t.u);
+      if (savedKeys.has(k) || seen.has(k) || dismissedRemote.has(k)) continue;
+      seen.add(k);
+      list.push({ id: 'r:' + k, local: false, device: d.name, title: t.t || t.u, url: t.u, fav: null });
+    }
+  }
+  return list;
+}
+
+// Reorder a real browser tab to match a drop position in the Today list.
+async function reorderToday(tabId, index) {
+  const list = buildTodayList();
+  const entry = list.find((e) => e.local && e.tab.id === tabId);
+  if (!entry) return;
+  const after = list.slice(index).find((e) => e.local && e.tab.id !== tabId);
+  let to;
+  if (after) {
+    to = after.tab.index;
+    if (entry.tab.index < after.tab.index) to--;
+  } else {
+    to = -1; // end of the window
+  }
+  await B.tabs.move(tabId, { index: to });
 }
 
 const refreshTabs = debounce(async () => {
@@ -786,65 +826,73 @@ function renderFolder(folder) {
   return wrap;
 }
 
-function renderTodayRow(tab, todayTabs) {
+function renderTodayRow(entry, todayList) {
   const row = el('div', 'row');
-  row.title = tab.title || tab.url;
-  if (tab.active) row.classList.add('active');
-  if (selectedTabs.has(tab.id)) row.classList.add('selected');
-  cacheFavicon(tab.url, tab.favIconUrl);
-  row.appendChild(favEl(tab.url, tab.favIconUrl));
-  row.appendChild(el('span', 'title', tab.title || tab.url));
+  row.title = entry.local ? entry.title : `${entry.title}\nOpen on ${entry.device}`;
+  if (entry.active) row.classList.add('active');
+  if (selectedTabs.has(entry.id)) row.classList.add('selected');
+  if (entry.local) cacheFavicon(entry.url, entry.fav);
+  row.appendChild(favEl(entry.url, entry.fav));
+  row.appendChild(el('span', 'title', entry.title));
 
   const close = el('button', 'close', '×');
-  close.title = 'Close tab';
-  close.addEventListener('click', (e) => { e.stopPropagation(); B.tabs.remove(tab.id); });
+  if (entry.local) {
+    close.title = 'Close tab';
+    close.addEventListener('click', (e) => { e.stopPropagation(); B.tabs.remove(entry.tab.id); });
+  } else {
+    close.title = `Hide (open on ${entry.device})`;
+    close.addEventListener('click', (e) => { e.stopPropagation(); dismissedRemote.add(urlKey(entry.url)); render(); });
+  }
   row.appendChild(close);
 
   row.addEventListener('click', (e) => {
     if (e.shiftKey) {
       // select the range between the active tab and the clicked one
-      const activeIdx = todayTabs.findIndex((t) => t.active);
+      const activeIdx = todayList.findIndex((t) => t.active);
       const anchorIdx = activeIdx >= 0 ? activeIdx : 0;
-      const myIdx = todayTabs.indexOf(tab);
+      const myIdx = todayList.indexOf(entry);
       const [a, b] = [Math.min(anchorIdx, myIdx), Math.max(anchorIdx, myIdx)];
-      selectedTabs = new Set(todayTabs.slice(a, b + 1).map((t) => t.id));
+      selectedTabs = new Set(todayList.slice(a, b + 1).map((t) => t.id));
       render();
       return;
     }
     if (e.metaKey || e.ctrlKey) {
-      if (selectedTabs.has(tab.id)) selectedTabs.delete(tab.id);
-      else selectedTabs.add(tab.id);
+      if (selectedTabs.has(entry.id)) selectedTabs.delete(entry.id);
+      else selectedTabs.add(entry.id);
       render();
       return;
     }
     selectedTabs.clear();
-    B.tabs.update(tab.id, { active: true });
+    if (entry.local) B.tabs.update(entry.tab.id, { active: true });
+    else B.tabs.create({ url: entry.url });
   });
   row.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     openMenu(e.clientX, e.clientY, [
-      { label: 'Pin to top grid', fn: () => placeInto(root.grid, saveRoot, root.grid.length, tabToDrag(tab)) },
-      { label: 'Save below grid', fn: () => placeInto(root.list, saveRoot, root.list.length, tabToDrag(tab)) },
-      { label: 'Copy link', fn: () => navigator.clipboard.writeText(tab.url) },
+      { label: 'Pin to top grid', fn: () => placeInto(root.grid, saveRoot, root.grid.length, entryToDrag(entry)) },
+      { label: 'Save below grid', fn: () => placeInto(root.list, saveRoot, root.list.length, entryToDrag(entry)) },
+      { label: 'Copy link', fn: () => navigator.clipboard.writeText(entry.url) },
       '-',
-      { label: 'Close tab', danger: true, fn: () => B.tabs.remove(tab.id) },
+      entry.local
+        ? { label: 'Close tab', danger: true, fn: () => B.tabs.remove(entry.tab.id) }
+        : { label: 'Hide from list', danger: true, fn: () => { dismissedRemote.add(urlKey(entry.url)); render(); } },
     ]);
   });
   // dragging a selected row drags the whole selection
   makeDraggable(row, () => {
-    if (selectedTabs.has(tab.id) && selectedTabs.size > 1) {
+    if (selectedTabs.has(entry.id) && selectedTabs.size > 1) {
       return {
         kind: 'tabs',
-        tabs: openTabs.filter((t) => selectedTabs.has(t.id)).map(tabToDrag),
+        tabs: todayList.filter((t) => selectedTabs.has(t.id)).map(entryToDrag),
       };
     }
-    return tabToDrag(tab);
+    return entryToDrag(entry);
   });
   return row;
 }
 
-function tabToDrag(tab) {
-  return { kind: 'tab', tabId: tab.id, url: tab.url, title: tab.title, fav: tab.favIconUrl };
+function entryToDrag(e) {
+  return { kind: 'tab', tabId: e.local ? e.tab.id : undefined, url: e.url, title: e.title, fav: e.fav };
 }
 
 function render() {
@@ -873,72 +921,21 @@ function render() {
     list.appendChild(el('div', 'hint', 'Drag tabs up here from Today to keep them, or make a folder with the ＋ button.'));
   }
 
-  // ----- today -----
-  const savedKeys = new Set(Object.values(items).filter((i) => i.type === 'tab').map((i) => urlKey(i.url)));
-  const todayTabs = openTabs.filter((t) => !savedKeys.has(urlKey(t.url)));
-  selectedTabs = new Set([...selectedTabs].filter((id) => todayTabs.some((t) => t.id === id)));
+  // ----- today: local tabs + other devices' tabs, one seamless list -----
+  const todayList = buildTodayList();
+  selectedTabs = new Set([...selectedTabs].filter((id) => todayList.some((e) => e.id === id)));
   const today = $('today');
   today.textContent = '';
-  for (const t of todayTabs) today.appendChild(renderTodayRow(t, todayTabs));
-  if (!todayTabs.length) {
+  for (const entry of todayList) today.appendChild(renderTodayRow(entry, todayList));
+  if (!todayList.length) {
     today.appendChild(el('div', 'hint', 'No loose tabs — everything is filed away. ✨'));
   }
 
-  $('clearBtn').onclick = () => clearToday(todayTabs);
+  $('clearBtn').onclick = () => clearToday(todayList.filter((e) => e.local).map((e) => e.tab));
 
-  renderDevices();
   layoutGrid();
 }
 
-// ----- open tabs on other synced devices -----
-function renderDevices() {
-  const box = $('devices');
-  box.textContent = '';
-  const entries = Object.entries(devices).sort((a, b) => b[1].ts - a[1].ts);
-  if (!entries.length) return;
-
-  const head = el('div', 'section-head');
-  head.appendChild(el('span', 'section-label', 'Devices'));
-  box.appendChild(head);
-
-  for (const [id, d] of entries) {
-    const key = 'device:' + id;
-    const isOpen = !!expanded[key];
-    const row = el('div', 'row folder-head' + (isOpen ? ' open' : ''));
-    row.title = `${d.name} — updated ${ago(d.ts)}`;
-    const chev = el('span', 'chev');
-    chev.innerHTML =
-      '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 7 5 3 8.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    row.appendChild(chev);
-    row.appendChild(el('span', 'emoji', '💻'));
-    row.appendChild(el('span', 'title', d.name));
-    row.appendChild(el('span', 'count', String(d.tabs.length)));
-    row.addEventListener('click', () => { expanded[key] = !isOpen; render(); });
-    box.appendChild(row);
-
-    if (isOpen) {
-      const kids = el('div', 'folder-children');
-      for (const t of d.tabs) {
-        const r = el('div', 'row');
-        r.title = (t.t || '') + '\n' + t.u;
-        r.appendChild(favEl(t.u, null));
-        r.appendChild(el('span', 'title', t.t || t.u));
-        r.addEventListener('click', () => B.tabs.create({ url: t.u }));
-        kids.appendChild(r);
-      }
-      box.appendChild(kids);
-    }
-  }
-}
-
-function ago(ts) {
-  const m = Math.round((Date.now() - ts) / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
-}
 
 // Balance the pinned grid into even rows (5 tiles in a 4-wide panel → 3 + 2)
 // at a FIXED tile size — resizing changes how many fit per row, never the size.
@@ -1000,10 +997,16 @@ function setupStatic() {
     onDrop: (i, d) => placeInto(root.list, saveRoot, i, d),
   });
 
-  // dropping a saved item onto Today unpins it (and opens it if closed)
+  // Today accepts: saved items (unpin) and local today tabs (reorder)
   dropZone($('today'), {
-    accept: (d) => d.kind === 'saved' && items[d.id]?.type === 'tab',
-    onDrop: (_i, d) => {
+    accept: (d) =>
+      (d.kind === 'saved' && items[d.id]?.type === 'tab') ||
+      (d.kind === 'tab' && d.tabId != null),
+    onDrop: (i, d) => {
+      if (d.kind === 'tab') {
+        reorderToday(d.tabId, i);
+        return;
+      }
       const it = items[d.id];
       if (!it) return;
       const wasOpen = findOpenTab(it.url);

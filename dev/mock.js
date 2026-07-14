@@ -46,6 +46,8 @@
     { id: 4, title: 'Figma — design file', url: 'https://www.figma.com/files', favIconUrl: '', active: false, pinned: false },
     { id: 5, title: 'YouTube', url: 'https://www.youtube.com/', favIconUrl: 'https://www.youtube.com/s/desktop/6b2b8f5e/img/favicon_32x32.png', active: false, pinned: false },
   ];
+  const reindex = () => tabs.forEach((t, i) => { t.index = i; });
+  reindex();
   const notifyTabs = () => fire(listeners.tabs, 'onUpdated');
 
   const fakeShot = (() => {
@@ -80,6 +82,7 @@
         tabs.forEach((t) => (t.active = false));
         const t = { id: nextTabId++, title: opts.url || 'New Tab', url: opts.url || 'about:newtab', favIconUrl: '', active: true, pinned: false };
         tabs.push(t);
+        reindex();
         notifyTabs();
         return t;
       },
@@ -90,6 +93,16 @@
       async remove(ids) {
         const arr = Array.isArray(ids) ? ids : [ids];
         tabs = tabs.filter((t) => !arr.includes(t.id));
+        reindex();
+        notifyTabs();
+      },
+      async move(id, { index }) {
+        const i = tabs.findIndex((t) => t.id === id);
+        if (i === -1) return;
+        const [t] = tabs.splice(i, 1);
+        if (index === -1 || index >= tabs.length) tabs.push(t);
+        else tabs.splice(index, 0, t);
+        reindex();
         notifyTabs();
       },
       onCreated: mkEvent(listeners.tabs, 'onUpdated'),

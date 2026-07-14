@@ -16,6 +16,9 @@ across all Firefox browsers where you're signed into your Firefox account.
   tab instead of opening a duplicate. Closing it keeps it saved (dimmed).
 - **Today** — every open tab that isn't saved anywhere, with one-click
   **Clear** (closes everything except the active and natively-pinned tabs).
+  Tabs open on your **other synced devices** appear right in the same list,
+  deduped — click to open here, drag to reorder your real tabs, × to
+  close (or hide, for remote ones).
 - **Drag & drop** — drag Today tabs into the grid or folders to save them,
   drag saved items between sections to reorder/move, drag a saved tab onto
   Today to unpin it.
