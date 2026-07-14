@@ -4,6 +4,8 @@ An Arc-style sidebar for Firefox: a pinned favicon grid, folders of saved tabs,
 a "Today" section for loose tabs, and pastel space themes. Saved state syncs
 across all Firefox browsers where you're signed into your Firefox account.
 
+![Nook in action — auto colour theme, folders, Today section and synced devices](docs/screenshot.png)
+
 ## Features
 
 - **Pinned grid** — Arc-style favicon tiles at the top for your daily apps.
