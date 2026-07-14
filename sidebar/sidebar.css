@@ -1,0 +1,477 @@
+/* Nook — Arc-style sidebar */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --g1: #ffd8a8;
+  --g2: #d0bfff;
+  --text: #3d3a45;
+  --muted: rgba(61, 58, 69, 0.55);
+  --panel: rgba(255, 255, 255, 0.28);
+  --panel-hover: rgba(255, 255, 255, 0.45);
+  --panel-active: rgba(255, 255, 255, 0.72);
+  --line: rgba(61, 58, 69, 0.14);
+  --shadow: 0 1px 3px rgba(40, 30, 60, 0.10);
+  --danger: #c0392b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #eceaf2;
+    --muted: rgba(236, 234, 242, 0.55);
+    --panel: rgba(255, 255, 255, 0.075);
+    --panel-hover: rgba(255, 255, 255, 0.13);
+    --panel-active: rgba(255, 255, 255, 0.22);
+    --line: rgba(236, 234, 242, 0.14);
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    --danger: #ff8a7a;
+  }
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: linear-gradient(165deg, var(--g1), var(--g2)) fixed;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+  -moz-user-select: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background:
+      linear-gradient(165deg,
+        color-mix(in srgb, var(--g1) 26%, #17171f),
+        color-mix(in srgb, var(--g2) 26%, #121218)) fixed;
+  }
+}
+
+/* ---------- forced theme modes (white / black themes) ----------
+   These override the OS light/dark rules above regardless of system mode. */
+
+html[data-mode="light"] {
+  --text: #3d3a45;
+  --muted: rgba(61, 58, 69, 0.55);
+  --panel: rgba(25, 25, 45, 0.05);
+  --panel-hover: rgba(25, 25, 45, 0.09);
+  --panel-active: rgba(25, 25, 45, 0.15);
+  --line: rgba(61, 58, 69, 0.14);
+  --shadow: 0 1px 3px rgba(40, 30, 60, 0.10);
+  --danger: #c0392b;
+}
+
+html[data-mode="dark"] {
+  --text: #eceaf2;
+  --muted: rgba(236, 234, 242, 0.55);
+  --panel: rgba(255, 255, 255, 0.075);
+  --panel-hover: rgba(255, 255, 255, 0.13);
+  --panel-active: rgba(255, 255, 255, 0.22);
+  --line: rgba(236, 234, 242, 0.14);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  --danger: #ff8a7a;
+}
+
+/* forced themes paint their gradient directly — no OS-mode mixing */
+html[data-mode="light"] body,
+html[data-mode="dark"] body {
+  background: linear-gradient(165deg, var(--g1), var(--g2)) fixed;
+}
+
+html[data-mode="light"] .popover { background: #ffffff; color: #3d3a45; }
+html[data-mode="dark"] .popover { background: #26242e; color: #eceaf2; }
+
+/* ---------- header ---------- */
+
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 6px;
+  flex: 0 0 auto;
+}
+
+#spaceDot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--g1), var(--g2));
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55), var(--shadow);
+  flex: 0 0 auto;
+}
+#spaceDot:hover { transform: scale(1.12); }
+
+#spaceName {
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin-left: -6px;
+}
+#spaceName:hover { background: var(--panel); }
+
+input.rename {
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  background: var(--panel-active);
+  border: none;
+  outline: none;
+  border-radius: 6px;
+  padding: 2px 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.icon-btn:hover { background: var(--panel-hover); color: var(--text); }
+
+/* ---------- scroll area ---------- */
+
+#scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 10px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+/* ---------- pinned grid ---------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 54px);
+  justify-content: start;
+  gap: 8px;
+  padding: 4px 2px 10px;
+}
+.grid:empty { display: none; padding: 0; }
+body.dragging .grid:empty {
+  display: grid;
+  min-height: 56px;
+  border: 1.5px dashed var(--line);
+  border-radius: 14px;
+  padding: 4px;
+  margin-bottom: 10px;
+}
+
+.tile {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.12s, transform 0.12s;
+}
+.tile:hover { background: var(--panel-hover); transform: translateY(-1px); }
+.tile.active { background: var(--panel-active); }
+.tile .fav-wrap { width: 22px; height: 22px; }
+
+/* ---------- rows / lists ---------- */
+
+.list { display: flex; flex-direction: column; gap: 2px; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.12s;
+}
+.row:hover { background: var(--panel-hover); }
+.row.active { background: var(--panel-active); box-shadow: var(--shadow); }
+.row.selected {
+  background: var(--panel-active);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 40%, transparent);
+}
+
+.row .title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.row .close {
+  display: none;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  place-items: center;
+}
+.row:hover .close { display: grid; }
+.row .close:hover { background: rgba(0, 0, 0, 0.12); color: var(--text); }
+
+/* saved-but-closed tabs look a bit quieter, like Arc */
+.row.saved-closed { opacity: 0.72; }
+.row.saved-closed:hover { opacity: 1; }
+
+/* ---------- favicons ---------- */
+
+.fav-wrap {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+.fav-wrap img { width: 100%; height: 100%; border-radius: 4px; }
+.fav-letter {
+  width: 100%;
+  height: 100%;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  text-transform: uppercase;
+}
+.tile .fav-letter { font-size: 12px; border-radius: 7px; }
+
+/* ---------- folders ---------- */
+
+.folder-head .chev {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.folder-head.open .chev { transform: rotate(90deg); }
+.folder-head .emoji { flex: 0 0 auto; width: 18px; text-align: center; font-size: 14px; }
+.folder-head .title { font-weight: 600; }
+.folder-head .count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.folder-head.drop-into { background: var(--panel-active); box-shadow: var(--shadow); }
+
+.folder-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 22px;
+}
+.folder-children:empty { min-height: 4px; }
+body.dragging .folder-children:empty {
+  min-height: 30px;
+  border-radius: 8px;
+  border: 1.5px dashed var(--line);
+}
+
+/* ---------- section head / divider ---------- */
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 2px 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.section-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#clearBtn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+#clearBtn:hover { background: var(--panel-hover); color: var(--text); }
+
+/* ---------- hints / empty states ---------- */
+
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 10px 8px;
+  line-height: 1.5;
+}
+
+/* ---------- footer ---------- */
+
+footer { flex: 0 0 auto; padding: 6px 10px 10px; }
+
+.newtab { color: var(--muted); font-weight: 600; }
+.newtab:hover { color: var(--text); }
+.newtab .plus { width: 16px; text-align: center; font-size: 14px; flex: 0 0 auto; }
+
+/* ---------- drag & drop ---------- */
+
+.drop-bar {
+  height: 3px;
+  border-radius: 2px;
+  margin: 0 6px;
+  background: var(--text);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.grid .drop-bar { display: none; }
+.grid.drop-target { outline: 1.5px dashed var(--line); outline-offset: 3px; border-radius: 14px; }
+
+.row[draggable="true"]:active { cursor: grabbing; }
+body.dragging .row { transition: none; }
+
+/* ---------- compact icon rail ----------
+   Toggled with the « button in the header (and forced automatically if the
+   panel is ever narrower than ~140px). Firefox owns the physical sidebar
+   width, so this switches the layout — drag the splitter to make the panel
+   itself slim. */
+
+body.compact #topbar {
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 6px 4px;
+}
+body.compact #spaceName,
+body.compact #addBtn { display: none; }
+body.compact #railBtn svg { transform: rotate(180deg); }
+
+body.compact #scroll { padding: 4px 6px 8px; }
+
+/* !important beats the JS-computed balanced-grid inline style */
+body.compact .grid { grid-template-columns: 1fr !important; gap: 6px; }
+body.compact .tile { width: auto; height: 40px; }
+body.compact .tile .fav-wrap { width: 20px; height: 20px; }
+
+body.compact .row { justify-content: center; padding: 5px 4px; gap: 0; }
+body.compact .row .title,
+body.compact .row .close,
+body.compact .row:hover .close { display: none; }
+
+body.compact .folder-head .chev,
+body.compact .folder-head .count { display: none; }
+body.compact .folder-children { margin-left: 8px; }
+
+body.compact .fav-wrap { width: 18px; height: 18px; }
+
+body.compact .section-head { margin: 10px 4px 6px; padding-top: 0; }
+body.compact .section-label,
+body.compact #clearBtn { display: none; }
+
+body.compact .hint { display: none; }
+
+body.compact footer { padding: 4px 6px 8px; }
+
+/* ---------- popovers & menus ---------- */
+
+#overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.popover {
+  position: fixed;
+  z-index: 60;
+  background: color-mix(in srgb, var(--g2) 12%, #fff);
+  color: #3d3a45;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(30, 20, 50, 0.25);
+  padding: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  .popover {
+    background: #26242e;
+    color: #eceaf2;
+  }
+}
+
+.menu { display: flex; flex-direction: column; min-width: 160px; padding: 5px; }
+.menu button {
+  display: block;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 6px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.menu button:hover { background: rgba(127, 127, 160, 0.18); }
+.menu button.danger { color: var(--danger); }
+.menu .sep { height: 1px; background: rgba(127, 127, 160, 0.25); margin: 4px 6px; }
+
+.swatches { display: grid; grid-template-columns: repeat(4, 26px); gap: 8px; padding: 4px; }
+.swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.swatch:hover { transform: scale(1.12); }
+.swatch.auto {
+  background: conic-gradient(#f7b2ad, #ffe28a, #b3f2b8, #a8d8ff, #d5b8ff, #f7b2ad);
+}
+
+.emojis { display: grid; grid-template-columns: repeat(6, 28px); gap: 4px; padding: 4px; }
+.emojis button {
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  border-radius: 7px;
+  cursor: pointer;
+  padding: 3px;
+}
+.emojis button:hover { background: rgba(127, 127, 160, 0.18); }

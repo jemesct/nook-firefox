@@ -1,0 +1,57 @@
+/* ============================================================
+   Nook — make the Nook sidebar the ONLY tab UI in Firefox
+   ============================================================
+
+   Firefox extensions cannot remove browser chrome (the tab strip,
+   the sidebar header, the sidebar icon rail). This file does it the
+   supported-unofficial way, same as Sidebery / Tree Style Tab users.
+
+   INSTALL
+   1. about:config → set
+        toolkit.legacyUserProfileCustomizations.stylesheets = true
+   2. about:support → "Profile Folder" → Open Folder
+   3. Create a folder called `chrome` inside the profile folder
+      (if it doesn't exist) and COPY this file into it:
+        <profile>/chrome/userChrome.css
+   4. Restart Firefox.
+
+   NOTE (macOS): if hiding the tab strip also hides the traffic-light
+   window buttons, right-click the toolbar → Customize Toolbar… and
+   tick "Title Bar" in the bottom-left.
+
+   userChrome.css is not officially supported and selectors can change
+   between Firefox versions. If a rule stops working, inspect the
+   browser UI with Tools → Browser Tools → Browser Toolbox and adjust.
+   ------------------------------------------------------------ */
+
+/* 1. Hide the horizontal tab strip */
+#TabsToolbar {
+  visibility: collapse !important;
+}
+
+/* 2. Hide the sidebar panel header ("Nook" title + close button).
+      #sidebar-header is the classic sidebar; #sidebar-panel-header is
+      the Firefox 136+ revamped sidebar.
+      If the header STILL shows after a restart, set sidebar.revamp to
+      false in about:config — that returns the classic sidebar, which
+      these selectors reliably match. */
+#sidebar-header,
+#sidebar-panel-header,
+#sidebar-box #sidebar-panel-header,
+#sidebar-box .sidebar-panel-header,
+#sidebar-box sidebar-panel-header {
+  display: none !important;
+}
+
+/* 3. Firefox 136+ revamped sidebar: hide the icon launcher rail
+      (the vertical strip of tool/extension/tab icons) */
+#sidebar-main {
+  display: none !important;
+}
+
+/* 4. Optional: slim down the sidebar splitter (uncomment if wanted)
+#sidebar-splitter {
+  width: 3px !important;
+  border: none !important;
+}
+*/

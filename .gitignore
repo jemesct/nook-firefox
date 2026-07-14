@@ -1,0 +1,12 @@
+.DS_Store
+node_modules/
+web-ext-artifacts/
+nook.zip
+nook.xpi
+
+# personal data — never publish
+backup-*.json
+recover-nook.js
+
+.amo-upload-uuid
+.claude/settings.local.json
