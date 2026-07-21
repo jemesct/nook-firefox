@@ -44,6 +44,8 @@ let space = { name: 'Personal', theme: 'peach' };
 let expanded = {};                   // folderId -> true; session-only, so folders
                                      // start collapsed every time the sidebar opens
 let favcache = {};                   // hostname -> data url  (local, per device)
+let relayDevices = {};               // deviceId -> {name,ts,tabs} via live relay
+let relayEnabled = false;            // live-sync opt-in (mirrors storage.sync.relay)
 let uiCompact = false;               // icon-rail layout      (local, per device)
 let devices = {};                    // deviceId -> {name, ts, tabs:[{t,u}]}
 let deviceId = null;                  // set by background.js; read here to skip self
@@ -126,8 +128,9 @@ async function loadState() {
 }
 
 async function loadLocal() {
-  const loc = await B.storage.local.get(['favcache', 'uiCompact', 'deviceId']);
+  const loc = await B.storage.local.get(['favcache', 'uiCompact', 'deviceId', 'relayDevices']);
   favcache = loc.favcache || {};
+  relayDevices = loc.relayDevices || {};
   uiCompact = !!loc.uiCompact;
   // background.js owns deviceId; here we only read it to exclude our own blob
   deviceId = loc.deviceId || null;
@@ -193,7 +196,13 @@ async function restoreBackup(b) {
 
 async function openBackupMenu(x, y) {
   const { backups = [] } = await B.storage.local.get('backups');
-  const entries = [{ label: 'Back up now', fn: () => backupNow() }];
+  const { relay } = await B.storage.sync.get('relay');
+  relayEnabled = !!(relay && relay.enabled);
+  const entries = [
+    { label: relayEnabled ? 'Live sync: On' : 'Live sync: Off…', fn: () => toggleLiveSync(!relayEnabled) },
+    '-',
+    { label: 'Back up now', fn: () => backupNow() },
+  ];
   if (backups.length) {
     entries.push('-');
     for (const b of backups) {
@@ -201,6 +210,33 @@ async function openBackupMenu(x, y) {
     }
   }
   openMenu(x, y, entries);
+}
+
+// Live sync opt-in: generate a random room id + AES-GCM key, stored in
+// storage.sync so both of the user's own devices pick them up (once) and can
+// then talk over the end-to-end-encrypted relay. Disabling just flips the flag.
+async function toggleLiveSync(on) {
+  if (!on) {
+    const { relay } = await B.storage.sync.get('relay');
+    await B.storage.sync.set({ relay: { ...(relay || {}), enabled: false } });
+    return;
+  }
+  if (!confirm(
+    'Turn on Live sync?\n\nYour open-tab titles and URLs will be sent — end-to-end ' +
+    'encrypted — through Nook\'s relay so your devices update near-instantly. ' +
+    'The relay only ever sees encrypted data. First-time setup takes one Firefox ' +
+    'Sync cycle (~10 min) to reach your other device; after that it\'s live.',
+  )) return;
+  const { relay } = await B.storage.sync.get('relay');
+  let cfg = relay;
+  if (!cfg || !cfg.roomId || !cfg.keyB64) {
+    const roomBytes = crypto.getRandomValues(new Uint8Array(24));
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key));
+    const toB64url = (b) => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    cfg = { roomId: toB64url(roomBytes), keyB64: btoa(String.fromCharCode(...raw)) };
+  }
+  await B.storage.sync.set({ relay: { ...cfg, enabled: true } });
 }
 
 function applyCompact() {
@@ -396,7 +432,14 @@ function buildTodayList() {
     seen.add(k);
     list.push({ id: t.id, local: true, tab: t, title: t.title || t.url, url: t.url, fav: t.favIconUrl, active: t.active });
   }
-  for (const [, d] of Object.entries(devices).sort((a, b) => b[1].ts - a[1].ts)) {
+  // Merge the two channels per device id: the live relay copy wins when it's
+  // fresher than the storage.sync copy (it usually is), else the sync copy.
+  const merged = {};
+  for (const [id, d] of Object.entries(devices)) merged[id] = d;
+  for (const [id, d] of Object.entries(relayDevices)) {
+    if (!merged[id] || (d.ts || 0) >= (merged[id].ts || 0)) merged[id] = d;
+  }
+  for (const [, d] of Object.entries(merged).sort((a, b) => b[1].ts - a[1].ts)) {
     for (const t of d.tabs || []) {
       const k = urlKey(t.u);
       if (savedKeys.has(k) || seen.has(k) || dismissedRemote.has(k)) continue;
@@ -1031,6 +1074,10 @@ async function init() {
 
   B.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync') reloadFromStorage();
+    if (area === 'local' && changes.relayDevices) {
+      relayDevices = changes.relayDevices.newValue || {};
+      render(); // live: a peer's tabs just arrived over the relay
+    }
   });
 
   for (const ev of ['onCreated', 'onRemoved', 'onUpdated', 'onActivated', 'onMoved', 'onAttached', 'onDetached']) {

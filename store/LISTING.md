@@ -58,12 +58,23 @@ Keyboard: Alt+A toggles the sidebar.
 Nook stores your folders, pinned tabs, theme choice, and — for the
 cross-device Today list — the titles and URLs of your open tabs in
 Firefox's built-in extension sync storage (storage.sync). Firefox syncs
-that data through your Firefox account like any other synced data. Nook has
-no servers of its own; nothing is ever sent to the developer or any third
-party. The optional "auto colour" theme takes a screenshot of the active
-tab locally to compute an average colour for the sidebar tint; the image is
-processed in memory on your device and discarded immediately. Local
-backups never leave your device.
+that data through your Firefox account like any other synced data. By
+default nothing is sent to the developer or any third party. The optional
+"auto colour" theme takes a screenshot of the active tab locally to compute
+an average colour for the sidebar tint; the image is processed in memory on
+your device and discarded immediately. Local backups never leave your
+device.
+
+Optional "Live sync" (off by default): if you turn it on, Nook sends your
+open-tab titles and URLs, end-to-end encrypted, through a relay server so
+your own devices update in near-real-time. The data is encrypted on your
+device with AES-GCM using a key generated on your device and shared only
+between your devices via Firefox Sync; the relay only ever receives opaque
+ciphertext addressed to a random room identifier, cannot decrypt it, and
+stores nothing. The relay is operated by the developer on Cloudflare. You
+can turn Live sync off at any time, which stops all relay traffic. The
+relay source code is public at
+https://github.com/jemesct/nook-firefox/tree/master/relay
 
 ## Notes to reviewer
 Plain hand-written JavaScript/CSS/HTML — no build step, no bundler, no

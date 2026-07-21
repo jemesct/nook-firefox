@@ -32,6 +32,12 @@ across all Firefox browsers where you're signed into your Firefox account.
   use the button to switch layouts.)
 - **Sync** — folders, pins, space name and theme live in `storage.sync`.
   Collapse state and favicon cache stay per-device in `storage.local`.
+- **Live sync (optional, off by default)** — right-click the space name to
+  turn on near-real-time cross-device tabs over an end-to-end-encrypted
+  relay. Firefox's own `storage.sync` only moves every ~10 min and can't be
+  hurried by any extension; Live sync bypasses that with a WebSocket relay
+  that only ever sees ciphertext. Deploy your own relay in one command — see
+  [relay/README.md](relay/README.md).
 
 ## Try it (temporary install)
 
