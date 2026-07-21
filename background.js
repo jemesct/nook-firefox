@@ -6,7 +6,7 @@ const B = typeof browser !== 'undefined' ? browser : chrome;
 // ── Relay endpoint ───────────────────────────────────────────────────────
 // Deploy relay/worker.js to Cloudflare (see relay/README.md) and put its
 // wss:// URL here. Leave as-is to disable live sync entirely.
-const RELAY_URL = 'wss://nook-relay.CHANGE-ME.workers.dev';
+const RELAY_URL = 'wss://nook-relay.turner-james.workers.dev';
 // ─────────────────────────────────────────────────────────────────────────
 
 // Toolbar button toggles the sidebar.

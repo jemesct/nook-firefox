@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Nook — Folders & Pinned Tabs",
   "description": "Arc-style sidebar for Firefox: pinned tab grid, folders, a Today section, and pastel spaces. Syncs across your Firefox browsers.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "browser_specific_settings": {
     "gecko": {
       "id": "nook-folder-tabs@jamesturner",
