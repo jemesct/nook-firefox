@@ -46,9 +46,7 @@ let expanded = {};                   // folderId -> true; session-only, so folde
 let favcache = {};                   // hostname -> data url  (local, per device)
 let uiCompact = false;               // icon-rail layout      (local, per device)
 let devices = {};                    // deviceId -> {name, ts, tabs:[{t,u}]}
-let deviceId = null;
-let deviceName = 'Device';
-let lastPublished = null;
+let deviceId = null;                  // set by background.js; read here to skip self
 let openTabs = [];
 let dragData = null;
 let renameActive = false;
@@ -131,11 +129,8 @@ async function loadLocal() {
   const loc = await B.storage.local.get(['favcache', 'uiCompact', 'deviceId']);
   favcache = loc.favcache || {};
   uiCompact = !!loc.uiCompact;
-  deviceId = loc.deviceId;
-  if (!deviceId) {
-    deviceId = uid().slice(0, 8);
-    B.storage.local.set({ deviceId });
-  }
+  // background.js owns deviceId; here we only read it to exclude our own blob
+  deviceId = loc.deviceId || null;
 }
 
 /* ---------- rolling local backups ----------
@@ -406,10 +401,18 @@ function buildTodayList() {
       const k = urlKey(t.u);
       if (savedKeys.has(k) || seen.has(k) || dismissedRemote.has(k)) continue;
       seen.add(k);
-      list.push({ id: 'r:' + k, local: false, device: d.name, title: t.t || t.u, url: t.u, fav: null });
+      list.push({ id: 'r:' + k, local: false, device: d.name, ts: d.ts, title: t.t || t.u, url: t.u, fav: null });
     }
   }
   return list;
+}
+
+function ago(ts) {
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (!ts || m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
 }
 
 // Reorder a real browser tab to match a drop position in the Today list.
@@ -432,24 +435,9 @@ const refreshTabs = debounce(async () => {
   openTabs = await B.tabs.query({ currentWindow: true });
   render();
   if (themeOf(space.theme).auto) sampleSoon();
-  publishTabs();
 }, 60);
-
-// Mirror this device's open tabs to storage.sync so other browsers can show
-// them. Delivery cadence is Firefox Sync's schedule — we just keep it fresh.
-const publishTabs = debounce(() => {
-  if (!deviceId) return;
-  const tabs = openTabs
-    .filter((t) => /^https?:/.test(t.url))
-    .slice(0, 40)
-    .map((t) => ({ t: (t.title || '').slice(0, 80), u: (t.url || '').slice(0, 250) }));
-  // storage.sync rejects keys over 8KB — trim until the payload fits
-  while (tabs.length && JSON.stringify(tabs).length > 7000) tabs.pop();
-  const flat = JSON.stringify(tabs);
-  if (flat === lastPublished) return;
-  lastPublished = flat;
-  B.storage.sync.set({ ['device:' + deviceId]: { name: deviceName, ts: Date.now(), tabs } }).catch(() => {});
-}, 4000);
+// Publishing this device's tabs lives in background.js so it keeps running
+// with the sidebar closed; the sidebar only reads other devices' blobs.
 
 /* ================= drag & drop ================= */
 
@@ -828,7 +816,7 @@ function renderFolder(folder) {
 
 function renderTodayRow(entry, todayList) {
   const row = el('div', 'row');
-  row.title = entry.local ? entry.title : `${entry.title}\nOpen on ${entry.device}`;
+  row.title = entry.local ? entry.title : `${entry.title}\nOpen on ${entry.device} · synced ${ago(entry.ts)}`;
   if (entry.active) row.classList.add('active');
   if (selectedTabs.has(entry.id)) row.classList.add('selected');
   if (entry.local) cacheFavicon(entry.url, entry.fav);
@@ -1031,11 +1019,6 @@ function setupStatic() {
 async function init() {
   setupStatic();
   await loadLocal();
-  try {
-    const p = await B.runtime.getPlatformInfo();
-    const os = { mac: 'Mac', win: 'Windows', linux: 'Linux', android: 'Android' }[p.os] || p.os;
-    deviceName = `${os} · ${deviceId.slice(0, 4)}`;
-  } catch { /* keep default name */ }
   await loadState();
   applyTheme();
   applyCompact();
@@ -1043,7 +1026,6 @@ async function init() {
 
   openTabs = await B.tabs.query({ currentWindow: true });
   render();
-  publishTabs();
   if (themeOf(space.theme).auto) sampleSoon();
   setTimeout(maybeDailyBackup, 3000);
 
